@@ -1,0 +1,33 @@
+{
+  "namespace": "org.dedkot",
+  "type": "record",
+  "name": "SubscriptionData",
+  "fields":[
+    {
+      "name": "id",
+      "type": "long"
+    },
+    {
+      "name": "startDate",
+      "type": {
+        "type": "int",
+        "logicalType": "date"
+      }
+    },
+    {
+      "name": "endDate",
+      "type": {
+        "type": "int",
+        "logicalType": "date"
+      }
+    },
+    {
+      "name": "duration",
+      "type": "long"
+    },
+    {
+      "name": "price",
+      "type": "double"
+    }
+  ]
+}

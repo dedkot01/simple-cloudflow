@@ -1,0 +1,15 @@
+{
+  "namespace": "org.dedkot",
+  "type": "record",
+  "name": "InvalidSubscriptionData",
+  "fields":[
+    {
+      "name": "subscriptionData",
+      "type": "org.dedkot.SubscriptionData"
+    },
+    {
+      "name": "error",
+      "type": "string"
+    }
+  ]
+}
