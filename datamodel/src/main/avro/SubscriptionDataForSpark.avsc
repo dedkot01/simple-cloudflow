@@ -1,0 +1,27 @@
+{
+  "namespace": "org.dedkot",
+  "type": "record",
+  "name": "SubscriptionDataForSpark",
+  "fields":[
+    {
+      "name": "id",
+      "type": "long"
+    },
+    {
+      "name": "startDate",
+      "type": "long"
+    },
+    {
+      "name": "endDate",
+      "type": "long"
+    },
+    {
+      "name": "duration",
+      "type": "long"
+    },
+    {
+      "name": "price",
+      "type": "double"
+    }
+  ]
+}

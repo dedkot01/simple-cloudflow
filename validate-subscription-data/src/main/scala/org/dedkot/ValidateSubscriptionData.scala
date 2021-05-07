@@ -1,23 +1,41 @@
 package org.dedkot
 
+import akka.stream.scaladsl.RunnableGraph
 import cloudflow.akkastream._
 import cloudflow.akkastream.scaladsl._
-import cloudflow.akkastream.util.scaladsl._
-import cloudflow.streamlets._
+import cloudflow.streamlets.StreamletShape
 import cloudflow.streamlets.avro._
 
-class ValidateSubscriptionData extends AkkaStreamlet {
-  val in      = AvroInlet[SubscriptionData]("in")
-  val valid   = AvroOutlet[SubscriptionData]("valid").withPartitioner(RoundRobinPartitioner)
-  val invalid = AvroOutlet[InvalidSubscriptionData]("invalid").withPartitioner(RoundRobinPartitioner)
-  val shape   = StreamletShape(in).withOutlets(invalid, valid)
+import java.time.LocalDate
 
-  override def createLogic = new RunnableGraphStreamletLogic() {
-    def runnableGraph = sourceWithCommittableContext(in).to(Splitter.sink(flow, invalid, valid))
-    def flow =
-      FlowWithCommittableContext[SubscriptionData].map { subData =>
-        if (subData.duration < 0) Left(InvalidSubscriptionData(subData, "duration must be positive"))
-        else Right(subData)
+class ValidateSubscriptionData extends AkkaStreamlet {
+  val in: AvroInlet[SubscriptionData]     = AvroInlet("in")
+  val valid: AvroOutlet[SubscriptionData] = AvroOutlet("valid")
+  override def shape: StreamletShape      = StreamletShape(in, valid)
+
+  override def createLogic: RunnableGraphStreamletLogic = new RunnableGraphStreamletLogic() {
+    override def runnableGraph: RunnableGraph[_] =
+      sourceWithCommittableContext(in).via(flow).to(committableSink(valid))
+
+    private def flow =
+      FlowWithCommittableContext[SubscriptionData].filter { subscriptionData =>
+        if (isValidSubscriptionDate(subscriptionData)) {
+          true
+        } else {
+          log.warn(s"Expected valid SubscriptionData but got: $subscriptionData")
+          false
+        }
       }
+
+    def isValidSubscriptionDate(data: SubscriptionData): Boolean = { //TODO мб вынести в datamodel?
+      val startDate = data.startDate
+      val endDate   = data.endDate
+
+      startDate.isBefore(LocalDate.now) &&
+      startDate.isBefore(endDate) &&
+      startDate.plusDays(data.duration).isEqual(endDate) &&
+      data.duration >= 0 &&
+      data.price >= 0
+    }
   }
 }
