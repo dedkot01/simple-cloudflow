@@ -5,6 +5,7 @@ import akka.stream.alpakka.csv.scaladsl.{ CsvParsing, CsvToMap }
 import akka.stream.alpakka.file.DirectoryChange
 import akka.stream.alpakka.file.scaladsl.{ Directory, DirectoryChangesSource }
 import akka.stream.scaladsl.{ FileIO, Flow, Merge, RunnableGraph, Source }
+import akka.stream.{ ActorAttributes, Supervision }
 import cloudflow.akkastream._
 import cloudflow.akkastream.scaladsl._
 import cloudflow.streamlets.StreamletShape
@@ -13,7 +14,7 @@ import cloudflow.streamlets.avro._
 import java.nio.charset.StandardCharsets
 import java.nio.file.{ FileSystem, FileSystems, Path }
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
+import java.time.format.{ DateTimeFormatter, DateTimeParseException }
 import scala.concurrent.duration.DurationInt
 
 class FilesIngress extends AkkaStreamlet {
@@ -53,7 +54,14 @@ class FilesIngress extends AkkaStreamlet {
         record("Duration").toLong,
         record("Price").toDouble
       )
-    }
+    }.withAttributes(
+      ActorAttributes.supervisionStrategy {
+        case e: DateTimeParseException =>
+          system.log.warning(s""""${e.getParsedString}" could not be parsed in LocalDate, skip this record""")
+          Supervision.Resume
+        case _ => Supervision.Stop
+      }
+    )
 
     def isValidFile(path: Path): Boolean = {
       // must be something ABC_1234_12345_01012021.csv
