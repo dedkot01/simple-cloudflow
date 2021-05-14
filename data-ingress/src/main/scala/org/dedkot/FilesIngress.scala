@@ -1,57 +1,82 @@
 package org.dedkot
 
 import akka.NotUsed
-import akka.actor.Cancellable
-import akka.stream.IOResult
 import akka.stream.alpakka.csv.scaladsl.{ CsvParsing, CsvToMap }
-import akka.stream.alpakka.file.scaladsl.Directory
-import akka.stream.scaladsl._
-import akka.util.ByteString
+import akka.stream.alpakka.file.DirectoryChange
+import akka.stream.alpakka.file.scaladsl.{ Directory, DirectoryChangesSource }
+import akka.stream.scaladsl.{ FileIO, Flow, Merge, RunnableGraph, Source }
 import cloudflow.akkastream._
 import cloudflow.akkastream.scaladsl._
-import cloudflow.streamlets._
+import cloudflow.streamlets.StreamletShape
 import cloudflow.streamlets.avro._
 
 import java.nio.charset.StandardCharsets
-import java.nio.file._
+import java.nio.file.{ FileSystem, FileSystems, Path }
 import java.time.LocalDate
-import scala.concurrent.Future
-import scala.concurrent.duration._
+import java.time.format.DateTimeFormatter
+import scala.concurrent.duration.DurationInt
 
 class FilesIngress extends AkkaStreamlet {
+
   val out: AvroOutlet[SubscriptionData] = AvroOutlet[SubscriptionData]("out")
   override val shape: StreamletShape    = StreamletShape.withOutlets(out)
 
   override def createLogic: RunnableGraphStreamletLogic = new RunnableGraphStreamletLogic() {
-    override def runnableGraph: RunnableGraph[Cancellable] =
-      emitFromFilesContinuously.to(plainSink(out))
 
-    val listFiles: NotUsed => Source[Path, NotUsed] = { _ =>
-      Directory.ls(
-        FileSystems.getDefault
-          .getPath("C:\\Users\\dzhdanov\\IdeaProjects\\simple-cloudflow\\data-ingress\\src\\main\\resources")
-      )
+    override def runnableGraph: RunnableGraph[_] =
+      mergedSource.via(readFile).via(parseRecord).to(plainSink(out))
+
+    val fs: FileSystem = FileSystems.getDefault
+    val path: Path     = fs.getPath(".\\data-ingress\\src\\main\\resources\\test-data")
+
+    val directory: Source[Path, NotUsed] = Directory.ls(path)
+    val directoryChangesCreation: Source[Path, NotUsed] = DirectoryChangesSource(path, 1.second, 1000).collect {
+      case (path, DirectoryChange.Creation) => path
     }
+    val mergedSource: Source[Path, NotUsed] = Source
+      .combine(directory, directoryChangesCreation)(Merge[Path](_))
+      .filter(isValidFile)
 
-    val readFile: Path => Source[Map[String, String], Future[IOResult]] = { path: Path =>
+    val readFile: Flow[Path, Map[String, String], NotUsed] = Flow[Path].flatMapConcat { path =>
       FileIO.fromPath(path).via(CsvParsing.lineScanner()).via(CsvToMap.toMapAsStrings(StandardCharsets.UTF_8))
     }
-
-    val parseFile: Map[String, String] => SubscriptionData = { csvRecord =>
-      log.info(csvRecord.toString)
+    val parseRecord: Flow[Map[String, String], SubscriptionData, NotUsed] = Flow[Map[String, String]].map { record =>
       SubscriptionData(
-        csvRecord("#").toLong,
-        LocalDate.parse(csvRecord("StartDate")),
-        LocalDate.parse(csvRecord("EndDate")),
-        csvRecord("Duration").toLong,
-        csvRecord("Price").toDouble
+        record("#").toLong,
+        LocalDate.parse(record("StartDate")),
+        LocalDate.parse(record("EndDate")),
+        record("Duration").toLong,
+        record("Price").toDouble
       )
     }
 
-    val emitFromFilesContinuously: Source[SubscriptionData, Cancellable] = Source
-      .tick(1.second, 5.second, NotUsed)
-      .flatMapConcat(listFiles)
-      .flatMapConcat(readFile)
-      .map(parseFile)
+    def isValidFile(path: Path): Boolean = {
+      // must be something ABC_1234_12345_01012021.csv
+      val pattern  = raw"^\w{3}_\d{4}_\d{5}_\d{8}.csv$$".r
+      val filename = path.getFileName.toString
+
+      if (pattern.findFirstIn(filename).isEmpty) {
+        system.log.warning(s"Filename is not valid: $filename")
+        false
+      }
+      // check date file
+      else {
+        raw"\d{8}".r.findFirstIn(filename) match {
+          case None =>
+            system.log.warning(s"Filename is not valid: $filename")
+            false
+          case Some(dateStr) =>
+            val format = DateTimeFormatter.ofPattern("ddMMyyyy")
+            val date   = LocalDate.parse(dateStr, format)
+            if (date.isAfter(LocalDate.now())) {
+              system.log.warning(
+                s"Date in filename ($date) is not valid, because today is ${LocalDate.now()}: $filename"
+              )
+              false
+            } else true
+        }
+      }
+    }
+
   }
 }
