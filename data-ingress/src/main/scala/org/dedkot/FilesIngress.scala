@@ -38,8 +38,13 @@ class FilesIngress extends AkkaStreamlet {
       .filter(isValidFile)
 
     val readFile: Flow[Path, Map[String, String], NotUsed] = Flow[Path].flatMapConcat { path =>
-      FileIO.fromPath(path).via(CsvParsing.lineScanner()).via(CsvToMap.toMapAsStrings(StandardCharsets.UTF_8))
+      FileIO
+        .fromPath(path)
+        .via(CsvParsing.lineScanner())
+        .via(CsvToMap.toMapAsStrings(StandardCharsets.UTF_8))
+        .filter(map => isValidHeadersCSV(map.keys.toSet, path))
     }
+
     val parseRecord: Flow[Map[String, String], SubscriptionData, NotUsed] = Flow[Map[String, String]].map { record =>
       SubscriptionData(
         record("#").toLong,
@@ -75,6 +80,16 @@ class FilesIngress extends AkkaStreamlet {
               false
             } else true
         }
+      }
+    }
+
+    def isValidHeadersCSV(headers: Set[String], path: Path): Boolean = {
+      val validHeaders = Set("#", "StartDate", "EndDate", "Duration", "Price")
+
+      if (headers == validHeaders) true
+      else {
+        system.log.warning(s"""File "${path.getFileName}" having invalid record with headers: $headers""")
+        false
       }
     }
 
