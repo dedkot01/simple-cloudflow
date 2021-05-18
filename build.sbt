@@ -23,6 +23,12 @@ lazy val datamodel = appModule("datamodel")
 
 lazy val dataIngress = appModule("data-ingress")
   .enablePlugins(CloudflowAkkaPlugin)
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.lightbend.akka" %% "akka-stream-alpakka-file" % "2.0.2",
+      "com.lightbend.akka" %% "akka-stream-alpakka-csv"  % "2.0.2"
+    )
+  )
   .dependsOn(datamodel)
 
 lazy val validateSubscriptionData = appModule("validate-subscription-data")
