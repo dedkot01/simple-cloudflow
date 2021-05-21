@@ -22,3 +22,13 @@ set1 == set3
 
 val map = Map("key1" -> "val1", "key1" -> "val2")
 map("key1")
+
+val either: Either[String, Int] = {
+  if (1 < 2)
+    Left("HJ")
+  else
+    Right(1)
+}
+
+either.left.getOrElse("d")
+

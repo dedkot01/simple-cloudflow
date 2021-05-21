@@ -6,21 +6,21 @@ import cloudflow.streamlets.avro.{ AvroInlet, AvroOutlet }
 import org.apache.flink.api.scala.createTypeInformation
 
 class Aggregation extends FlinkStreamlet {
-  val in: AvroInlet[SubscriptionData]           = AvroInlet("in")
+  val in: AvroInlet[DataPacket]                 = AvroInlet("in")
   val out: AvroOutlet[SubscriptionDataForSpark] = AvroOutlet("out")
   override val shape: StreamletShape            = StreamletShape(in, out)
 
   override def createLogic: FlinkStreamletLogic = new FlinkStreamletLogic {
     override def buildExecutionGraph: Unit = {
-      val subscriptionData = readStream(in)
-      val subscriptionDataForSpark = subscriptionData.map { data =>
+      val dataPacket = readStream(in)
+      val subscriptionDataForSpark = dataPacket.map { data =>
         log.info("In FLINK!" + data.toString)
         SubscriptionDataForSpark(
-          data.id,
-          data.startDate.toEpochDay,
-          data.endDate.toEpochDay,
-          data.duration,
-          data.price
+          data.subscriptionData.id,
+          data.subscriptionData.startDate.toEpochDay,
+          data.subscriptionData.endDate.toEpochDay,
+          data.subscriptionData.duration,
+          data.subscriptionData.price
         )
       }
       writeStream(out, subscriptionDataForSpark)
