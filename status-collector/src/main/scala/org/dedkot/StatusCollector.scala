@@ -7,17 +7,30 @@ import org.apache.flink.streaming.api.scala.createTypeInformation
 
 class StatusCollector extends FlinkStreamlet {
 
-  val statusFileFailIn: AvroInlet[FileStatusFail] = AvroInlet("file-status-fail-in")
+  val fileFailStatusIn: AvroInlet[FileFailStatus] = AvroInlet("file-fail-status-in")
+
+  val recordFailStatusIn: AvroInlet[RecordFailStatus]       = AvroInlet("record-fail-status-in")
+  val recordSuccessStatusIn: AvroInlet[RecordSuccessStatus] = AvroInlet("record-success-status-in")
 
   override val shape: StreamletShape = StreamletShape
-    .withInlets(statusFileFailIn)
+    .withInlets(fileFailStatusIn, recordSuccessStatusIn, recordFailStatusIn)
 
   override def createLogic(): FlinkStreamletLogic = new FlinkStreamletLogic {
 
     override def buildExecutionGraph(): Unit = {
-      val dataPacket = readStream(statusFileFailIn)
-      dataPacket.map { data =>
-        log.warn(s"${data.fileData.name} FAIL! Errors: ${data.errors}")
+      val fileFailStatus = readStream(fileFailStatusIn)
+      fileFailStatus.map { status =>
+        log.warn(s"${status.fileData.name} FAIL! Errors: ${status.errors}")
+      }
+
+      val recordSuccessStatus = readStream(recordSuccessStatusIn)
+      recordSuccessStatus.map { status =>
+        log.info("GOOD")
+      }
+
+      val recordFailStatus = readStream(recordFailStatusIn)
+      recordFailStatus.map { status =>
+        log.warn(s"${status.errors}")
       }
     }
 

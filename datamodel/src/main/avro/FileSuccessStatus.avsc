@@ -1,7 +1,7 @@
 {
   "namespace": "org.dedkot",
   "type": "record",
-  "name": "FileStatusSuccess",
+  "name": "FileSuccessStatus",
   "fields": [
     {
       "name": "fileData",

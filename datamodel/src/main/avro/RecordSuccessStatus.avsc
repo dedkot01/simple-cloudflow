@@ -1,0 +1,11 @@
+{
+  "namespace": "org.dedkot",
+  "name": "RecordSuccessStatus",
+  "type": "record",
+  "fields": [
+    {
+      "name": "record",
+      "type": "org.dedkot.DataPacket"
+    }
+  ]
+}

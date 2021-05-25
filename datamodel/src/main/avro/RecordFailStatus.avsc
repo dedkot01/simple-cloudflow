@@ -1,11 +1,11 @@
 {
   "namespace": "org.dedkot",
   "type": "record",
-  "name": "FileStatusFail",
+  "name": "RecordFailStatus",
   "fields": [
     {
-      "name": "fileData",
-      "type": "org.dedkot.FileData"
+      "name": "record",
+      "type": "org.dedkot.DataPacket"
     },
     {
       "name": "errors",

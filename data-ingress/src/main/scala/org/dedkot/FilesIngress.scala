@@ -21,10 +21,10 @@ class FilesIngress extends AkkaStreamlet {
 
   val dataOut: AvroOutlet[DataPacket] = AvroOutlet("data-out")
   //val statusSuccessOut: AvroOutlet[FileStatusSuccess] = AvroOutlet("file-status-success-out")
-  val statusFailOut: AvroOutlet[FileStatusFail] = AvroOutlet("file-status-fail-out")
+  val failStatusOut: AvroOutlet[FileFailStatus] = AvroOutlet("file-fail-status-out")
 
   override val shape: StreamletShape =
-    StreamletShape.withOutlets(dataOut, statusFailOut)
+    StreamletShape.withOutlets(dataOut, failStatusOut)
 
   override def createLogic: RunnableGraphStreamletLogic = new RunnableGraphStreamletLogic() {
 
@@ -39,20 +39,20 @@ class FilesIngress extends AkkaStreamlet {
         val mergedSource: Source[Path, NotUsed] = Source
           .combine(directory, directoryChangesCreation)(Merge[Path](_))
 
-        val validationFile: Flow[Path, Either[FileStatusFail, Path], NotUsed] = Flow[Path].map { path =>
+        val validationFile: Flow[Path, Either[FileFailStatus, Path], NotUsed] = Flow[Path].map { path =>
           if (isValidFileName(path)) {
             if (isValidFileDate(path))
               Right(path)
             else
               Left(
-                FileStatusFail(
+                FileFailStatus(
                   FileData(path.getFileName.toString),
                   Seq(s"File ${path.getFileName} is not valid: date later than now")
                 )
               )
           } else {
             Left(
-              FileStatusFail(
+              FileFailStatus(
                 FileData(path.getFileName.toString),
                 Seq(s"File ${path.getFileName} is not valid: filename doesn't correct")
               )
@@ -60,7 +60,7 @@ class FilesIngress extends AkkaStreamlet {
           }
         }
 
-        val broadcast = builder.add(Broadcast[Either[FileStatusFail, Path]](2))
+        val broadcast = builder.add(Broadcast[Either[FileFailStatus, Path]](2))
 
         val readFile: Flow[Path, (Path, Map[String, String]), NotUsed] = Flow[Path].flatMapConcat { path =>
           FileIO
@@ -71,7 +71,7 @@ class FilesIngress extends AkkaStreamlet {
             .map(map => path -> map)
         }
 
-        val sendStatusFail = plainSink(statusFailOut)
+        val sendStatusFail = plainSink(failStatusOut)
 
         val assemblyDataPacket: Flow[(Path, Map[String, String]), DataPacket, NotUsed] =
           Flow[(Path, Map[String, String])].map {
