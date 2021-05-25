@@ -51,9 +51,9 @@ class ValidateSubscriptionData extends AkkaStreamlet {
         val filterAfterValidate = builder.add(Broadcast[Either[RecordFailStatus, DataPacket]](2))
         val broadcast           = builder.add(Broadcast[DataPacket](2))
 
-        val failStatusSink    = committableSink(failStatusOut)
-        val successStatusSink = committableSink(successStatusOut)
-        val validSink         = committableSink(validOut)
+        val failStatusSink    = plainSink(failStatusOut)
+        val successStatusSink = plainSink(successStatusOut)
+        val validSink         = plainSink(validOut)
 
         source ~> validateRecord ~> filterAfterValidate.in
 
