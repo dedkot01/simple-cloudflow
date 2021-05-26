@@ -20,11 +20,12 @@ import scala.concurrent.duration.DurationInt
 class FilesIngress extends AkkaStreamlet {
 
   val dataOut: AvroOutlet[DataPacket] = AvroOutlet("data-out")
-  //val statusSuccessOut: AvroOutlet[FileStatusSuccess] = AvroOutlet("file-status-success-out")
-  val failStatusOut: AvroOutlet[FileFailStatus] = AvroOutlet("file-fail-status-out")
+
+  val failStatusOut: AvroOutlet[FileFailStatus]       = AvroOutlet("file-fail-status-out")
+  val successStatusOut: AvroOutlet[FileSuccessStatus] = AvroOutlet("file-success-status-out")
 
   override val shape: StreamletShape =
-    StreamletShape.withOutlets(dataOut, failStatusOut)
+    StreamletShape.withOutlets(dataOut, failStatusOut, successStatusOut)
 
   override def createLogic: RunnableGraphStreamletLogic = new RunnableGraphStreamletLogic() {
 
@@ -32,14 +33,15 @@ class FilesIngress extends AkkaStreamlet {
       RunnableGraph.fromGraph(GraphDSL.create() { implicit builder: GraphDSL.Builder[NotUsed] =>
         import GraphDSL.Implicits._
 
-        val directory: Source[Path, NotUsed] = Directory.ls(path)
-        val directoryChangesCreation: Source[Path, NotUsed] = DirectoryChangesSource(path, 1.second, 1000).collect {
-          case (path, DirectoryChange.Creation) => path
-        }
+        val filesInDirectory: Source[Path, NotUsed] = Directory.ls(pathToDirectory)
+        val newFilesInDirectory: Source[Path, NotUsed] =
+          DirectoryChangesSource(pathToDirectory, 1.second, 1000).collect {
+            case (path, DirectoryChange.Creation) => path
+          }
         val mergedSource: Source[Path, NotUsed] = Source
-          .combine(directory, directoryChangesCreation)(Merge[Path](_))
+          .combine(filesInDirectory, newFilesInDirectory)(Merge[Path](_))
 
-        val validationFile: Flow[Path, Either[FileFailStatus, Path], NotUsed] = Flow[Path].map { path =>
+        val validatingFile: Flow[Path, Either[FileFailStatus, Path], NotUsed] = Flow[Path].map { path =>
           if (isValidFileName(path)) {
             if (isValidFileDate(path))
               Right(path)
@@ -62,21 +64,21 @@ class FilesIngress extends AkkaStreamlet {
 
         val broadcast = builder.add(Broadcast[Either[FileFailStatus, Path]](2))
 
-        val readFile: Flow[Path, (Path, Map[String, String]), NotUsed] = Flow[Path].flatMapConcat { path =>
+        val readingFile: Flow[Path, (Path, Map[String, String]), NotUsed] = Flow[Path].flatMapConcat { path =>
           FileIO
             .fromPath(path)
             .via(CsvParsing.lineScanner())
             .via(CsvToMap.toMapAsStrings(StandardCharsets.UTF_8))
-            .filter(map => isValidHeadersCSV(map.keys.toSet, path))
             .map(map => path -> map)
         }
 
-        val sendStatusFail = plainSink(failStatusOut)
+        val broadcastEndFile  = builder.add(Broadcast[(Path, Map[String, String])](2))
+        var countRecord: Long = 0L
 
-        val assemblyDataPacket: Flow[(Path, Map[String, String]), DataPacket, NotUsed] =
+        val assemblingDataPacket: Flow[(Path, Map[String, String]), DataPacket, NotUsed] =
           Flow[(Path, Map[String, String])].map {
             case (path, record) =>
-              DataPacket(
+              val dataPacket = DataPacket(
                 FileData(path.getFileName.toString),
                 SubscriptionData(
                   record("#").toLong,
@@ -86,6 +88,8 @@ class FilesIngress extends AkkaStreamlet {
                   record("Price").toDouble
                 )
               )
+              countRecord += 1
+              dataPacket
           }.withAttributes(
             ActorAttributes.supervisionStrategy {
               case e: DateTimeParseException =>
@@ -95,18 +99,35 @@ class FilesIngress extends AkkaStreamlet {
             }
           )
 
-        val sendData = plainSink(dataOut)
+        val dataSink          = plainSink(dataOut)
+        val failStatusSink    = plainSink(failStatusOut)
+        val successStatusSink = plainSink(successStatusOut)
 
-        mergedSource ~> validationFile ~> broadcast.in
+        // # GRAPH
+        mergedSource ~> validatingFile ~> broadcast.in
 
-        broadcast.out(0).filter(_.isLeft).map(_.left.get) ~> sendStatusFail
-        broadcast.out(1).filter(_.isRight).map(_.right.get) ~> readFile ~> assemblyDataPacket ~> sendData
+        broadcast.out(0).filter(_.isLeft).map(_.left.get) ~> failStatusSink
+        broadcast.out(1).filter(_.isRight).map(_.right.get) ~> readingFile ~> broadcastEndFile.in
+
+        broadcastEndFile.out(0).filter(record => record._2("#") == "end").map { record =>
+          val status = FileSuccessStatus(
+            FileData(record._1.getFileName.toString),
+            countRecord
+          )
+          countRecord = 0L
+          status
+        } ~> successStatusSink
+
+        broadcastEndFile
+          .out(1)
+          .filter(record => record._2("#") != "end")
+          .filter(record => isValidHeadersCSV(record._2.keys.toSet, pathToDirectory)) ~> assemblingDataPacket ~> dataSink
 
         ClosedShape
       })
 
-    val fs: FileSystem = FileSystems.getDefault
-    val path: Path     = fs.getPath(".\\data-ingress\\src\\main\\resources\\test-data")
+    val fs: FileSystem        = FileSystems.getDefault
+    val pathToDirectory: Path = fs.getPath(".\\data-ingress\\src\\main\\resources\\test-data")
 
     def isValidFileName(path: Path): Boolean = {
       // must be something ABC_1234_12345_01012021.csv
