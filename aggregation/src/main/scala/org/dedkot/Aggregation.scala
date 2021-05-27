@@ -17,26 +17,13 @@ class Aggregation extends FlinkStreamlet {
 
   override def createLogic: FlinkStreamletLogic = new FlinkStreamletLogic {
     override def buildExecutionGraph: Unit = {
+      val dataPacket = readStream(dataIn).keyBy(_.fileData)
       val statusFromCollector = readStream(statusFromCollectorIn)
-        .map(status => log.info(s"${status.fileData.name} have good records ${status.countGoodRecords}"))
+        .keyBy(_.fileData)
+        .connect(dataPacket)
+        .process(new CheckStatusFunction)
 
-      val dataPacket = readStream(dataIn)
-
-      val subscriptionDataForSpark =
-        dataPacket
-          .keyBy(_.fileData)
-          .map { data =>
-            log.info("In FLINK!" + data.toString)
-            SubscriptionDataForSpark(
-              data.subscriptionData.id,
-              data.subscriptionData.startDate.toEpochDay,
-              data.subscriptionData.endDate.toEpochDay,
-              data.subscriptionData.duration,
-              data.subscriptionData.price
-            )
-          }
-
-      writeStream(out, subscriptionDataForSpark)
+      writeStream(out, statusFromCollector)
     }
 
   }
