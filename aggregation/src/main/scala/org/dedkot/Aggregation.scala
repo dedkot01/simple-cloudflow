@@ -4,6 +4,7 @@ import cloudflow.flink.{ FlinkStreamlet, FlinkStreamletLogic }
 import cloudflow.streamlets.StreamletShape
 import cloudflow.streamlets.avro.{ AvroInlet, AvroOutlet }
 import org.apache.flink.api.scala.createTypeInformation
+import org.apache.flink.streaming.api.TimeCharacteristic
 
 class Aggregation extends FlinkStreamlet {
   val dataIn: AvroInlet[DataPacket]                         = AvroInlet("data-in")
@@ -16,6 +17,8 @@ class Aggregation extends FlinkStreamlet {
     .withOutlets(out)
 
   override def createLogic: FlinkStreamletLogic = new FlinkStreamletLogic {
+    context.env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime)
+
     override def buildExecutionGraph: Unit = {
       val dataPacket = readStream(dataIn).keyBy(_.fileData)
       val statusFromCollector = readStream(statusFromCollectorIn)

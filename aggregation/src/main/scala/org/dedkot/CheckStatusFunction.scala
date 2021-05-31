@@ -4,6 +4,9 @@ import org.apache.flink.api.common.state.{ ListState, ListStateDescriptor, Value
 import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction
 import org.apache.flink.util.Collector
 
+import java.time.Instant
+import scala.concurrent.duration.DurationInt
+
 class CheckStatusFunction
     extends KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, SubscriptionDataForSpark] {
 
@@ -19,6 +22,12 @@ class CheckStatusFunction
     new ListStateDescriptor[SubscriptionDataForSpark]("list data", classOf[SubscriptionDataForSpark])
   )
 
+  lazy val timestampLastRecord: ValueState[Long] = getRuntimeContext.getState(
+    new ValueStateDescriptor[Long]("timestamp last record", classOf[Long])
+  )
+
+  val waitingTime: Long = 10.seconds.toMillis
+
   override def processElement1(
     value: StatusFromCollector,
     ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, SubscriptionDataForSpark]#Context,
@@ -32,7 +41,12 @@ class CheckStatusFunction
     ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, SubscriptionDataForSpark]#Context,
     out: Collector[SubscriptionDataForSpark]
   ): Unit = {
-    if (counterInputRecords == null) counterInputRecords.update(0)
+    if (timestampLastRecord.value() != null)
+      ctx.timerService().deleteEventTimeTimer(timestampLastRecord.value() + waitingTime)
+    timestampLastRecord.update(Instant.now().toEpochMilli)
+    ctx.timerService().registerEventTimeTimer(timestampLastRecord.value() + waitingTime)
+
+    if (counterInputRecords.value() == null) counterInputRecords.update(0)
 
     val data = SubscriptionDataForSpark(
       value.subscriptionData.id,
@@ -48,9 +62,29 @@ class CheckStatusFunction
     if (currentCount == statusFromCollector.value().countGoodRecords) {
       listData.get().forEach(out.collect(_))
 
+      ctx.timerService().deleteEventTimeTimer(timestampLastRecord.value() + waitingTime)
+      timestampLastRecord.clear()
       listData.clear()
       statusFromCollector.clear()
       counterInputRecords.clear()
+    }
+  }
+
+  override def onTimer(
+    timestamp: Long,
+    ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, SubscriptionDataForSpark]#OnTimerContext,
+    out: Collector[SubscriptionDataForSpark]
+  ): Unit = {
+    if (Instant.now.toEpochMilli >= (timestampLastRecord.value() + waitingTime)) {
+      println(s"Busy I guess ${ctx.getCurrentKey}, send ${counterInputRecords.value()} records")
+      listData.get().forEach(out.collect(_))
+
+      timestampLastRecord.clear()
+      listData.clear()
+      statusFromCollector.clear()
+      counterInputRecords.clear()
+    } else {
+      ctx.timerService().registerEventTimeTimer(timestampLastRecord.value() + waitingTime)
     }
   }
 
