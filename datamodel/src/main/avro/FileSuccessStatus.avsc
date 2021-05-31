@@ -1,0 +1,15 @@
+{
+  "namespace": "org.dedkot",
+  "type": "record",
+  "name": "FileSuccessStatus",
+  "fields": [
+    {
+      "name": "fileData",
+      "type": "org.dedkot.FileData"
+    },
+    {
+      "name": "countRecord",
+      "type": "long"
+    }
+  ]
+}

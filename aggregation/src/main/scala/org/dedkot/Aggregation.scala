@@ -4,26 +4,30 @@ import cloudflow.flink.{ FlinkStreamlet, FlinkStreamletLogic }
 import cloudflow.streamlets.StreamletShape
 import cloudflow.streamlets.avro.{ AvroInlet, AvroOutlet }
 import org.apache.flink.api.scala.createTypeInformation
+import org.apache.flink.streaming.api.TimeCharacteristic
 
 class Aggregation extends FlinkStreamlet {
-  val in: AvroInlet[SubscriptionData]           = AvroInlet("in")
+  val dataIn: AvroInlet[DataPacket]                         = AvroInlet("data-in")
+  val statusFromCollectorIn: AvroInlet[StatusFromCollector] = AvroInlet("status-from-collector-in")
+
   val out: AvroOutlet[SubscriptionDataForSpark] = AvroOutlet("out")
-  override val shape: StreamletShape            = StreamletShape(in, out)
+
+  override val shape: StreamletShape = StreamletShape
+    .withInlets(dataIn, statusFromCollectorIn)
+    .withOutlets(out)
 
   override def createLogic: FlinkStreamletLogic = new FlinkStreamletLogic {
+    context.env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime)
+
     override def buildExecutionGraph: Unit = {
-      val subscriptionData = readStream(in)
-      val subscriptionDataForSpark = subscriptionData.map { data =>
-        log.info("In FLINK!" + data.toString)
-        SubscriptionDataForSpark(
-          data.id,
-          data.startDate.toEpochDay,
-          data.endDate.toEpochDay,
-          data.duration,
-          data.price
-        )
-      }
-      writeStream(out, subscriptionDataForSpark)
+      val dataPacket = readStream(dataIn).keyBy(_.fileData)
+      val statusFromCollector = readStream(statusFromCollectorIn)
+        .keyBy(_.fileData)
+        .connect(dataPacket)
+        .process(new CheckStatusFunction)
+
+      writeStream(out, statusFromCollector)
     }
+
   }
 }

@@ -43,6 +43,10 @@ lazy val dataStore = appModule("data-store")
   .enablePlugins(CloudflowSparkPlugin)
   .dependsOn(datamodel)
 
+lazy val statusCollector = appModule("status-collector")
+  .enablePlugins(CloudflowFlinkPlugin)
+  .dependsOn(datamodel)
+
 def appModule(moduleID: String): Project = {
   Project(id = moduleID, base = file(moduleID))
     .settings(
