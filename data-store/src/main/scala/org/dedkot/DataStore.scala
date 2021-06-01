@@ -7,8 +7,8 @@ import cloudflow.streamlets.avro.AvroInlet
 import org.apache.spark.sql.streaming.OutputMode
 
 class DataStore extends SparkStreamlet {
-  val in: AvroInlet[SubscriptionDataForSpark] = AvroInlet("in")
-  override val shape: StreamletShape          = StreamletShape(in)
+  val in: AvroInlet[ListSubscriptionData] = AvroInlet("in")
+  override val shape: StreamletShape      = StreamletShape(in)
 
   override def createLogic: SparkStreamletLogic = new SparkStreamletLogic() {
     override def buildStreamingQueries: StreamletQueryExecution = {
