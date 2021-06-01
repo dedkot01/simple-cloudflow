@@ -5,10 +5,10 @@ import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction
 import org.apache.flink.util.Collector
 
 import java.time.Instant
+import scala.collection.convert.ImplicitConversions.`iterable AsScalaIterable`
 import scala.concurrent.duration.DurationInt
 
-class CheckStatusFunction
-    extends KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, SubscriptionDataForSpark] {
+class CheckStatusFunction extends KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, Seq[DataPacket]] {
 
   lazy val statusFromCollector: ValueState[StatusFromCollector] = getRuntimeContext.getState(
     new ValueStateDescriptor[StatusFromCollector]("status from collector", classOf[StatusFromCollector])
@@ -18,8 +18,8 @@ class CheckStatusFunction
     new ValueStateDescriptor[Long]("counter input records", classOf[Long])
   )
 
-  lazy val listData: ListState[SubscriptionDataForSpark] = getRuntimeContext.getListState(
-    new ListStateDescriptor[SubscriptionDataForSpark]("list data", classOf[SubscriptionDataForSpark])
+  lazy val listData: ListState[DataPacket] = getRuntimeContext.getListState(
+    new ListStateDescriptor[DataPacket]("list data", classOf[DataPacket])
   )
 
   lazy val timestampLastRecord: ValueState[Long] = getRuntimeContext.getState(
@@ -30,37 +30,29 @@ class CheckStatusFunction
 
   override def processElement1(
     value: StatusFromCollector,
-    ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, SubscriptionDataForSpark]#Context,
-    out: Collector[SubscriptionDataForSpark]
+    ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, Seq[DataPacket]]#Context,
+    out: Collector[Seq[DataPacket]]
   ): Unit = {
     statusFromCollector.update(value)
   }
 
   override def processElement2(
     value: DataPacket,
-    ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, SubscriptionDataForSpark]#Context,
-    out: Collector[SubscriptionDataForSpark]
+    ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, Seq[DataPacket]]#Context,
+    out: Collector[Seq[DataPacket]]
   ): Unit = {
     if (timestampLastRecord.value() != null)
       ctx.timerService().deleteEventTimeTimer(timestampLastRecord.value() + waitingTime)
     timestampLastRecord.update(Instant.now().toEpochMilli)
     ctx.timerService().registerEventTimeTimer(timestampLastRecord.value() + waitingTime)
 
+    listData.add(value)
+
     if (counterInputRecords.value() == null) counterInputRecords.update(0)
-
-    val data = SubscriptionDataForSpark(
-      value.subscriptionData.id,
-      value.subscriptionData.startDate.toEpochDay,
-      value.subscriptionData.endDate.toEpochDay,
-      value.subscriptionData.duration,
-      value.subscriptionData.price
-    )
-    listData.add(data)
-
     val currentCount = counterInputRecords.value() + 1
     counterInputRecords.update(currentCount)
     if (currentCount == statusFromCollector.value().countGoodRecords) {
-      listData.get().forEach(out.collect(_))
+      out.collect(listData.get().toSeq)
 
       ctx.timerService().deleteEventTimeTimer(timestampLastRecord.value() + waitingTime)
       timestampLastRecord.clear()
@@ -72,12 +64,12 @@ class CheckStatusFunction
 
   override def onTimer(
     timestamp: Long,
-    ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, SubscriptionDataForSpark]#OnTimerContext,
-    out: Collector[SubscriptionDataForSpark]
+    ctx: KeyedCoProcessFunction[FileData, StatusFromCollector, DataPacket, Seq[DataPacket]]#OnTimerContext,
+    out: Collector[Seq[DataPacket]]
   ): Unit = {
     if (Instant.now.toEpochMilli >= (timestampLastRecord.value() + waitingTime)) {
       println(s"Busy I guess ${ctx.getCurrentKey}, send ${counterInputRecords.value()} records")
-      listData.get().forEach(out.collect(_))
+      out.collect(listData.get().toSeq)
 
       timestampLastRecord.clear()
       listData.clear()

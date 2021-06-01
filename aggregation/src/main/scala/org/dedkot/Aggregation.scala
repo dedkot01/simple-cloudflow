@@ -10,7 +10,7 @@ class Aggregation extends FlinkStreamlet {
   val dataIn: AvroInlet[DataPacket]                         = AvroInlet("data-in")
   val statusFromCollectorIn: AvroInlet[StatusFromCollector] = AvroInlet("status-from-collector-in")
 
-  val out: AvroOutlet[SubscriptionDataForSpark] = AvroOutlet("out")
+  val out: AvroOutlet[ListSubscriptionData] = AvroOutlet("out")
 
   override val shape: StreamletShape = StreamletShape
     .withInlets(dataIn, statusFromCollectorIn)
@@ -25,8 +25,11 @@ class Aggregation extends FlinkStreamlet {
         .keyBy(_.fileData)
         .connect(dataPacket)
         .process(new CheckStatusFunction)
+      val aggregateByDate = statusFromCollector
+        .keyBy(_.head.fileData)
+        .process(new AggregateByDurationFunction)
 
-      writeStream(out, statusFromCollector)
+      writeStream(out, aggregateByDate)
     }
 
   }
