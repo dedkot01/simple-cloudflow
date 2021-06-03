@@ -1,15 +1,17 @@
 package org.dedkot
 
-import cats.effect._
-import cats.effect.unsafe.implicits.global
 import cloudflow.spark.sql.SQLImplicits._
 import cloudflow.spark.{ SparkStreamlet, SparkStreamletLogic, StreamletQueryExecution }
 import cloudflow.streamlets.StreamletShape
 import cloudflow.streamlets.avro.AvroInlet
+import org.apache.spark.sql.Dataset
+import cats.effect._
 import doobie._
 import doobie.implicits._
 import doobie.util.transactor.Transactor.Aux
-import org.apache.spark.sql.Dataset
+import org.dedkot.DataStore.{ insertData, insertLongData }
+
+import scala.concurrent.ExecutionContext
 
 class DataStore extends SparkStreamlet {
   val in: AvroInlet[ListSubscriptionData] = AvroInlet("in")
@@ -17,40 +19,41 @@ class DataStore extends SparkStreamlet {
 
   override def createLogic: SparkStreamletLogic = new SparkStreamletLogic() {
     override def buildStreamingQueries: StreamletQueryExecution = {
-      val subscriptionDataMoreYear = readStream(in)
-        .filter(item => item.isMoreYear)
-        .flatMap(item => for (data <- item.list) yield data)
+      val subscriptionData = readStream(in)
 
-      val subscriptionDataLessYear = readStream(in)
-        .filter(item => !item.isMoreYear)
-        .flatMap(item => for (data <- item.list) yield data)
-
-      subscriptionDataMoreYear.writeStream.foreachBatch { (batch: Dataset[SubscriptionDataForSpark], batchId: Long) =>
+      subscriptionData.writeStream.foreachBatch { (batch: Dataset[ListSubscriptionData], batchId: Long) =>
         batch.foreach { data =>
-          insertData(data, "subscription")
-          log.info(s"Save in subscription: $data")
-        }
-      }.start().toQueryExecution
-
-      subscriptionDataLessYear.writeStream.foreachBatch { (batch: Dataset[SubscriptionDataForSpark], batchId: Long) =>
-        batch.foreach { data =>
-          insertData(data, "longSubscription")
-          log.info(s"Save in longSubscription: $data")
+          log.info("SPARK TYT")
+          if (data.isMoreYear) data.list.foreach(insertLongData)
+          else data.list.foreach(insertData)
         }
       }.start().toQueryExecution
     }
+  }
+}
 
-    def xa: Aux[IO, Unit] = Transactor.fromDriverManager[IO](
-      "org.postgresql.Driver",
-      "jdbc:postgresql://localhost:5432/postgres",
-      "postgres", // user
-      "postgres"  // password
-    )
+object DataStore {
 
-    def insertData(data: SubscriptionDataForSpark, tableName: String): Unit =
-      sql"""
-      INSERT INTO "$tableName" ("startDate", "endDate", "duration", "price") VALUES
-      (${data.startDate}, ${data.endDate}, ${data.duration}, ${data.price})
-    """.update.run.transact(xa).unsafeRunSync
+  private implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+
+  val xa: Aux[IO, Unit] = Transactor.fromDriverManager[IO](
+    "org.postgresql.Driver",
+    "jdbc:postgresql://localhost:5432/postgres",
+    "postgres", // user
+    "postgres"  // password
+  )
+
+  def insertData(data: SubscriptionDataForSpark): Unit = {
+    sql"""
+        INSERT INTO public."subscription" ("startDate", "endDate", duration, price) VALUES
+        (${data.startDate}, ${data.endDate}, ${data.duration}, ${data.price})
+      """.update.run.transact(xa).unsafeRunSync
+  }
+
+  def insertLongData(data: SubscriptionDataForSpark): Unit = {
+    sql"""
+        INSERT INTO public."longSubscription" ("startDate", "endDate", duration, price) VALUES
+        (${data.startDate}, ${data.endDate}, ${data.duration}, ${data.price})
+      """.update.run.transact(xa).unsafeRunSync
   }
 }

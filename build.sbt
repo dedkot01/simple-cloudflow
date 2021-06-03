@@ -39,7 +39,7 @@ lazy val aggregation = appModule("aggregation")
   .enablePlugins(CloudflowFlinkPlugin)
   .dependsOn(datamodel)
 
-val doobieVersion = "1.0.0-M5"
+val doobieVersion = "0.9.0"
 lazy val dataStore = appModule("data-store")
   .enablePlugins(CloudflowSparkPlugin)
   .settings(
