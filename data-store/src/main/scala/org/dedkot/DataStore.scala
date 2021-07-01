@@ -23,7 +23,6 @@ class DataStore extends SparkStreamlet {
 
       subscriptionData.writeStream.foreachBatch { (batch: Dataset[ListSubscriptionData], batchId: Long) =>
         batch.foreach { data =>
-          log.info("SPARK TYT")
           if (data.isMoreYear) data.list.foreach(insertLongData)
           else data.list.foreach(insertData)
         }
