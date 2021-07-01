@@ -39,8 +39,16 @@ lazy val aggregation = appModule("aggregation")
   .enablePlugins(CloudflowFlinkPlugin)
   .dependsOn(datamodel)
 
+val doobieVersion = "0.9.0"
 lazy val dataStore = appModule("data-store")
   .enablePlugins(CloudflowSparkPlugin)
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.tpolecat" %% "doobie-core"     % doobieVersion,
+      "org.tpolecat" %% "doobie-postgres" % doobieVersion,
+      "org.tpolecat" %% "doobie-specs2"   % doobieVersion
+    )
+  )
   .dependsOn(datamodel)
 
 lazy val statusCollector = appModule("status-collector")
