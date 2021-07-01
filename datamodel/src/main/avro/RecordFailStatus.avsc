@@ -1,0 +1,18 @@
+{
+  "namespace": "org.dedkot",
+  "type": "record",
+  "name": "RecordFailStatus",
+  "fields": [
+    {
+      "name": "record",
+      "type": "org.dedkot.DataPacket"
+    },
+    {
+      "name": "errors",
+      "type": {
+        "type": "array",
+        "items": "string"
+      }
+    }
+  ]
+}

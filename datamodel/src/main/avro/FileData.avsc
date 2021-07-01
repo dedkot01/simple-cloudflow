@@ -1,0 +1,11 @@
+{
+  "namespace": "org.dedkot",
+  "type": "record",
+  "name": "FileData",
+  "fields": [
+    {
+      "name": "name",
+      "type": "string"
+    }
+  ]
+}

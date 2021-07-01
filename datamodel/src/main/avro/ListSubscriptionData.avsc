@@ -1,0 +1,18 @@
+{
+  "namespace": "org.dedkot",
+  "name": "ListSubscriptionData",
+  "type": "record",
+  "fields": [
+    {
+      "name": "isMoreYear",
+      "type": "boolean"
+    },
+    {
+      "name": "list",
+      "type": {
+        "type": "array",
+        "items": "org.dedkot.SubscriptionDataForSpark"
+      }
+    }
+  ]
+}

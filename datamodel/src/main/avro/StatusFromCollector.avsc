@@ -1,0 +1,15 @@
+{
+  "namespace": "org.dedkot",
+  "name": "StatusFromCollector",
+  "type": "record",
+  "fields": [
+    {
+      "name": "fileData",
+      "type": "org.dedkot.FileData"
+    },
+    {
+      "name": "countGoodRecords",
+      "type": "long"
+    }
+  ]
+}

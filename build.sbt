@@ -1,5 +1,5 @@
-import sbt._
 import sbt.Keys._
+import sbt._
 
 lazy val root =
   Project(id = "root", base = file("."))
@@ -23,6 +23,12 @@ lazy val datamodel = appModule("datamodel")
 
 lazy val dataIngress = appModule("data-ingress")
   .enablePlugins(CloudflowAkkaPlugin)
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.lightbend.akka" %% "akka-stream-alpakka-file" % "2.0.2",
+      "com.lightbend.akka" %% "akka-stream-alpakka-csv"  % "2.0.2"
+    )
+  )
   .dependsOn(datamodel)
 
 lazy val validateSubscriptionData = appModule("validate-subscription-data")
@@ -33,8 +39,20 @@ lazy val aggregation = appModule("aggregation")
   .enablePlugins(CloudflowFlinkPlugin)
   .dependsOn(datamodel)
 
+val doobieVersion = "0.9.0"
 lazy val dataStore = appModule("data-store")
   .enablePlugins(CloudflowSparkPlugin)
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.tpolecat" %% "doobie-core"     % doobieVersion,
+      "org.tpolecat" %% "doobie-postgres" % doobieVersion,
+      "org.tpolecat" %% "doobie-specs2"   % doobieVersion
+    )
+  )
+  .dependsOn(datamodel)
+
+lazy val statusCollector = appModule("status-collector")
+  .enablePlugins(CloudflowFlinkPlugin)
   .dependsOn(datamodel)
 
 def appModule(moduleID: String): Project = {

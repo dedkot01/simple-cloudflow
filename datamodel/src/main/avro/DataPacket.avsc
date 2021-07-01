@@ -1,0 +1,15 @@
+{
+  "namespace": "org.dedkot",
+  "type": "record",
+  "name": "DataPacket",
+  "fields": [
+    {
+      "name": "fileData",
+      "type": "org.dedkot.FileData"
+    },
+    {
+      "name": "subscriptionData",
+      "type": "org.dedkot.SubscriptionData"
+    }
+  ]
+}

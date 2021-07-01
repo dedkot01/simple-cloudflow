@@ -1,0 +1,18 @@
+{
+  "namespace": "org.dedkot",
+  "type": "record",
+  "name": "FileFailStatus",
+  "fields": [
+    {
+      "name": "fileData",
+      "type": "org.dedkot.FileData"
+    },
+    {
+      "name": "errors",
+      "type": {
+        "type": "array",
+        "items": "string"
+      }
+    }
+  ]
+}
